@@ -1118,18 +1118,16 @@ async function whisperGenerate() {
   status.textContent = 'Thinking…';
 
   try {
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1000,
-        system: 'You are a productivity assistant. The user gives you a vague goal. Break it into 4-6 specific, actionable tasks. Reply ONLY with a JSON array of strings. No markdown, no preamble. Example: ["Research competitors for 30 mins","Write product outline","Set up GitHub repo","Draft README"]',
-        messages: [{ role: 'user', content: input }]
-      })
-    });
-    const data = await resp.json();
-    const text = data.content?.map(b=>b.text||'').join('').trim();
+    const GEMINI_KEY = 'YOUR_GEMINI_KEY_HERE';
+const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    contents: [{ parts: [{ text: `You are a productivity assistant. Break this goal into 4-6 specific actionable tasks. Reply ONLY with a JSON array of strings, no markdown. Goal: ${input}` }] }]
+  })
+});
+const data = await resp.json();
+const text = data.candidates[0].content.parts[0].text.trim();
     const tasks = JSON.parse(text.replace(/```json|```/g,'').trim());
     status.textContent = `Generated ${tasks.length} tasks!`;
     $('whisperTasksWrap').style.display = '';
@@ -1585,18 +1583,21 @@ async function sendChat() {
   const thinking = appendMsg('assistant', '…thinking…', true);
   try {
     const contextInfo = `User has ${S.tasks.length} tasks (${S.tasks.filter(t=>t.done).length} done), ${S.habits.length} habits tracked, best streak ${S.habits.reduce((m,h)=>(h.streak||0)>m?(h.streak||0):m,0)} days, ${S.pomodoros} pomodoros completed.`;
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1000,
-        system: `You are Coworker, a friendly and motivating productivity AI assistant embedded in ThriveCraft app. Be concise, warm, and actionable. ${contextInfo}`,
-        messages: S.chatHistory.slice(-12)
-      })
-    });
-    const data = await resp.json();
-    const reply = data.content?.map(b=>b.text||'').join('') || 'I had trouble connecting. Try again!';
+const GEMINI_KEY = 'AIzaSyCV5HCt64gOAA3cfjlzrq5PYOR7_rmFnc4';
+const contextInfo = `User has ${S.tasks.length} tasks, ${S.habits.length} habits, ${S.pomodoros} pomodoros.`;
+const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    contents: S.chatHistory.slice(-12).map(m => ({
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: m.content }]
+    })),
+    systemInstruction: { parts: [{ text: `You are Coworker, a friendly productivity AI in ThriveCraft. Be concise and motivating. ${contextInfo}` }] }
+  })
+});
+const data = await resp.json();
+const reply = data.candidates[0].content.parts[0].text;
     thinking.remove();
     appendMsg('assistant', reply);
     S.chatHistory.push({ role:'assistant', content: reply });
